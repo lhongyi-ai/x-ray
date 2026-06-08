@@ -1,0 +1,93 @@
+{
+  "image": "raw_data/High_Pressure_PXRD/Data/Cell_29/6p2 GPa/UOTe-6p2GPa-10deg_064.tif",
+  "shape": [
+    1043,
+    981
+  ],
+  "center_yx_px": [
+    530.3874527398094,
+    509.27015958305265
+  ],
+  "center_source": "raw_data/High_Pressure_PXRD/Data/Calibration/CeO2_30keV_168mm_0deg_001.poni",
+  "radial_source": "pyFAI_poni_2theta",
+  "radial_units": "2th_rad_scaled_to_pixel_step",
+  "coordinate_origin": 0.0008832632447592914,
+  "coordinate_step": 0.0005589671200141311,
+  "ring_positions_coordinate": [
+    0.10317424620734528,
+    0.13894814188824967,
+    0.1685733992489986,
+    0.18590137996943668,
+    0.1954038210096769,
+    0.21664457157021388,
+    0.23900325637077913,
+    0.2585671055712737,
+    0.264156776771415,
+    0.30384344229241833,
+    0.3122279490926303,
+    0.319494521652814,
+    0.33290973253315315,
+    0.35638635157374665
+  ],
+  "profile_ring_radii_px": [
+    298.0,
+    331.0,
+    346.0,
+    471.0
+  ],
+  "mean_ring_radii_px": [
+    183.0,
+    247.0,
+    298.0,
+    350.0,
+    426.0,
+    461.0,
+    542.0,
+    557.0,
+    570.0
+  ],
+  "density_ring_radii_px": [
+    304.0,
+    386.0,
+    594.0,
+    636.0
+  ],
+  "ring_radii_px": [
+    183.0,
+    247.0,
+    300.0,
+    331.0,
+    348.0,
+    386.0,
+    426.0,
+    461.0,
+    471.0,
+    542.0,
+    557.0,
+    570.0,
+    594.0,
+    636.0
+  ],
+  "ring_half_width_px": 3.0,
+  "base_mask_pixels": 89625,
+  "raw_ring_mask_pixels": 149926,
+  "ring_mask_pixels": 146403,
+  "combined_mask_pixels": 236028,
+  "spot_pixels": 3142,
+  "micro_spot_pixels": 1279,
+  "merged_spot_core_pixels": 3905,
+  "spot_display_pixels": 10106,
+  "spot_display_pixels_on_raw_ring": 3523,
+  "spot_count": 67,
+  "outputs": {
+    "raw_ring_mask_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_raw_auto_ring_mask.npy",
+    "ring_mask_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_auto_ring_mask.npy",
+    "micro_spot_mask_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_micro_spot_mask.npy",
+    "spot_mask_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_auto_spot_mask.npy",
+    "combined_mask_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_base_plus_ring_mask.npy",
+    "filtered_image_npy": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_ring_filtered_image.npy",
+    "spots_csv": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_spots.csv",
+    "diagnostic_png": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_auto_ring_filter_overlay.png",
+    "filtered_image_png": "outputs/auto_ring_filter_batch_poni_microz4p2_ringw3/UOTe-6p2GPa-10deg_064_ring_filtered_image.png"
+  }
+}

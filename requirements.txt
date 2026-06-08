@@ -1,0 +1,13 @@
+pyFAI
+tifffile
+fabio
+numpy
+scipy
+pandas
+matplotlib
+scikit-image
+ipykernel
+jupyterlab
+notebook
+seaborn
+requests

@@ -1,0 +1,16 @@
+name: uotexrd
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - tifffile
+  - fabio
+  - pyfai
+  - scikit-image
+  - ipykernel
+  - jupyterlab
+  - pip
