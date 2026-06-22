@@ -1,0 +1,2 @@
+suite,out_dir,scan_count,pressure_order,total_candidate_detections,total_peak_groups,recurring_groups,appearing_disappearing_groups,shifting_groups,isolated_strong_groups,likely_static_background_groups,manual_review_groups
+outputs/correlation_suite_20260621_high_recall_scored_v2,outputs/correlation_suite_20260621_high_recall_scored_v2/06_scientific_peak_group_validation,17,0.7GPa;1GPa;1.3GPa;1.5GPa;2.3GPa;3.9GPa;5GPa;6.2GPa;6.6GPa;7.4GPa;8.5GPa;9.8GPa;10.4GPa;12.8GPa;13.3GPa;15.6GPa;2.4GPa_decomp,4893,625,208,24,0,28,206,7

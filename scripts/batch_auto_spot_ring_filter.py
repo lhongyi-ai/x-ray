@@ -75,6 +75,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-eccentricity", type=float, default=0.998)
     parser.add_argument("--spot-dilate", type=int, default=2)
     parser.add_argument("--micro-spot-dilate", type=int, default=1)
+    parser.add_argument("--spot-ring-tolerance", type=float, default=10.0)
+    parser.add_argument("--spot-radius-group-tolerance", type=float, default=10.0)
     parser.add_argument(
         "--output-suffix",
         default="",
@@ -84,6 +86,11 @@ def parse_args() -> argparse.Namespace:
         "--flat-output",
         action="store_true",
         help="Write all per-image outputs directly into --out-dir instead of one subfolder per image.",
+    )
+    parser.add_argument(
+        "--pressure-output",
+        action="store_true",
+        help="Write per-image outputs into pressure folders under --out-dir.",
     )
     parser.add_argument(
         "--keep-on-rings",
@@ -114,6 +121,8 @@ def config_from_args(args: argparse.Namespace) -> FilterConfig:
         max_eccentricity=float(args.max_eccentricity),
         spot_dilate=int(args.spot_dilate),
         micro_spot_dilate=int(args.micro_spot_dilate),
+        spot_ring_tolerance=float(args.spot_ring_tolerance),
+        spot_radius_group_tolerance=float(args.spot_radius_group_tolerance),
         keep_on_rings=bool(args.keep_on_rings),
         make_plot=not bool(args.no_plots),
     )
@@ -147,13 +156,22 @@ def safe_output_name(path: Path) -> str:
     return f"{parent}__{path.stem}"
 
 
+def safe_pressure_name(path: Path) -> str:
+    text = " ".join([path.name, path.parent.name])
+    match = re.search(r"(\d+(?:p\d+|\.\d+)?)\s*G[PpOo][Aa]", text, flags=re.IGNORECASE)
+    if match:
+        value = match.group(1).replace(".", "p")
+        return f"{value}_GPa"
+    return path.parent.name.replace(" ", "_")
+
+
 def suffixed_name(base: str, suffix: str, extension: str) -> str:
     return f"{base}{suffix}{extension}" if suffix else f"{base}{extension}"
 
 
 def parse_pressure_gpa(path: Path) -> float | None:
     text = " ".join([path.parent.name, path.name])
-    match = re.search(r"(\d+(?:p\d+|\.\d+)?)\s*GPa", text, flags=re.IGNORECASE)
+    match = re.search(r"(\d+(?:p\d+|\.\d+)?)\s*G[PpOo][Aa]", text, flags=re.IGNORECASE)
     if not match:
         return None
     return float(match.group(1).replace("p", "."))
@@ -172,6 +190,7 @@ def write_summary_csv(path: Path, reports: list[dict]) -> None:
         "spot_display_pixels",
         "spot_display_pixels_on_raw_ring",
         "ring_count",
+        "radius_group_count",
         "radial_source",
         "radial_units",
         "ring_radii_px",
@@ -191,6 +210,7 @@ def write_summary_csv(path: Path, reports: list[dict]) -> None:
         "spots_csv",
         "diagnostic_png",
         "filtered_image_png",
+        "grouped_overlay_png",
     ]
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
@@ -210,6 +230,7 @@ def write_summary_csv(path: Path, reports: list[dict]) -> None:
                     "spot_display_pixels": report["spot_display_pixels"],
                     "spot_display_pixels_on_raw_ring": report["spot_display_pixels_on_raw_ring"],
                     "ring_count": len(report["ring_radii_px"]),
+                    "radius_group_count": len(report["radius_spot_groups"]),
                     "radial_source": report["radial_source"],
                     "radial_units": report["radial_units"],
                     "ring_radii_px": " ".join(f"{x:.1f}" for x in report["ring_radii_px"]),
@@ -231,6 +252,7 @@ def write_summary_csv(path: Path, reports: list[dict]) -> None:
                     "spots_csv": report["outputs"]["spots_csv"],
                     "diagnostic_png": report["outputs"]["diagnostic_png"],
                     "filtered_image_png": report["outputs"]["filtered_image_png"],
+                    "grouped_overlay_png": report["outputs"]["grouped_overlay_png"],
                 }
             )
 
@@ -300,7 +322,12 @@ def main() -> None:
     reports: list[dict] = []
 
     for idx, image in enumerate(images, start=1):
-        per_image_dir = args.out_dir if args.flat_output else args.out_dir / safe_output_name(image)
+        if args.flat_output:
+            per_image_dir = args.out_dir
+        elif args.pressure_output:
+            per_image_dir = args.out_dir / safe_pressure_name(image)
+        else:
+            per_image_dir = args.out_dir / safe_output_name(image)
         print(f"[{idx}/{len(images)}] {image}")
         report = process_image(
             image,

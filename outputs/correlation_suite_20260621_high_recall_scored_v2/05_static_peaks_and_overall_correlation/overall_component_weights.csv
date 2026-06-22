@@ -1,0 +1,6 @@
+component,weight,used_in_overall
+peak_presence_jaccard,0.35,yes
+peak_roi_area_cosine,0.3,yes
+same_window_acf_shifted_median_scaled,0.2,yes
+all_window_acf_frame_median_scaled,0.15,yes
+single_frame_window_acf,,"no; it compares windows inside one frame, not frame-to-frame"

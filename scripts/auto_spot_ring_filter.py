@@ -48,6 +48,12 @@ class SpotRecord:
     bbox_max_y: int
     bbox_max_x: int
     radius_px: float
+    ring_index: int
+    ring_radius_px: float
+    ring_delta_px: float
+    radius_group_index: int
+    radius_group_radius_px: float
+    radius_group_delta_px: float
 
 
 @dataclass
@@ -68,6 +74,8 @@ class FilterConfig:
     max_eccentricity: float = 0.998
     spot_dilate: int = 2
     micro_spot_dilate: int = 1
+    spot_ring_tolerance: float = 10.0
+    spot_radius_group_tolerance: float = 10.0
     keep_on_rings: bool = True
     make_plot: bool = True
 
@@ -206,6 +214,18 @@ def parse_args() -> argparse.Namespace:
         help="Dilate micro-spot local maxima by this radius before merging.",
     )
     parser.add_argument(
+        "--spot-ring-tolerance",
+        type=float,
+        default=10.0,
+        help="Maximum radius difference in pixels for assigning a spot to a detected ring.",
+    )
+    parser.add_argument(
+        "--spot-radius-group-tolerance",
+        type=float,
+        default=10.0,
+        help="Maximum radius difference in pixels for grouping spots by same radius.",
+    )
+    parser.add_argument(
         "--keep-on-rings",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -245,6 +265,8 @@ def config_from_args(args: argparse.Namespace) -> FilterConfig:
         max_eccentricity=float(args.max_eccentricity),
         spot_dilate=int(args.spot_dilate),
         micro_spot_dilate=int(args.micro_spot_dilate),
+        spot_ring_tolerance=float(args.spot_ring_tolerance),
+        spot_radius_group_tolerance=float(args.spot_radius_group_tolerance),
         keep_on_rings=bool(args.keep_on_rings),
         make_plot=not bool(args.no_plot),
     )
@@ -629,6 +651,12 @@ def detect_spots(
                 bbox_max_y=int(maxr),
                 bbox_max_x=int(maxc),
                 radius_px=float(np.mean(rr)),
+                ring_index=-1,
+                ring_radius_px=float("nan"),
+                ring_delta_px=float("nan"),
+                radius_group_index=-1,
+                radius_group_radius_px=float("nan"),
+                radius_group_delta_px=float("nan"),
             )
         )
 
@@ -670,6 +698,135 @@ def detect_micro_spots(
     if dilate_radius > 0:
         micro = morphology.binary_dilation(micro, morphology.disk(dilate_radius))
     return np.asarray(micro, dtype=bool)
+
+
+def nearest_ring_group(
+    radius_px: float,
+    ring_radii: np.ndarray,
+    tolerance: float,
+) -> tuple[int, float, float]:
+    if ring_radii.size == 0:
+        return -1, float("nan"), float("nan")
+    deltas = np.abs(ring_radii.astype(np.float32) - float(radius_px))
+    index = int(np.argmin(deltas))
+    delta = float(deltas[index])
+    ring_radius = float(ring_radii[index])
+    if delta > tolerance:
+        return -1, ring_radius, delta
+    return index, ring_radius, delta
+
+
+def records_from_spot_mask(
+    spot_mask: np.ndarray,
+    image: np.ndarray,
+    z: np.ndarray,
+    radial: np.ndarray,
+    ring_radii: np.ndarray,
+    ring_tolerance: float,
+    min_area: int,
+    max_area: int,
+    max_eccentricity: float,
+) -> list[SpotRecord]:
+    labels = measure.label(spot_mask, connectivity=2)
+    records: list[SpotRecord] = []
+    for region in measure.regionprops(labels, intensity_image=image):
+        if region.area < min_area or region.area > max_area:
+            continue
+        if region.eccentricity > max_eccentricity:
+            continue
+
+        coords = region.coords
+        rr = radial[coords[:, 0], coords[:, 1]]
+        zz = z[coords[:, 0], coords[:, 1]]
+        mean_radius = float(np.mean(rr))
+        ring_index, ring_radius, ring_delta = nearest_ring_group(
+            mean_radius,
+            ring_radii,
+            ring_tolerance,
+        )
+        cy, cx = region.weighted_centroid
+        minr, minc, maxr, maxc = region.bbox
+        records.append(
+            SpotRecord(
+                label=len(records) + 1,
+                y=float(cy),
+                x=float(cx),
+                area_px=int(region.area),
+                major_axis_px=float(region.major_axis_length),
+                minor_axis_px=float(region.minor_axis_length),
+                eccentricity=float(region.eccentricity),
+                orientation_deg=float(np.rad2deg(region.orientation)),
+                mean_intensity=float(region.mean_intensity),
+                max_intensity=float(region.max_intensity),
+                mean_z=float(np.mean(zz)),
+                max_z=float(np.max(zz)),
+                bbox_min_y=int(minr),
+                bbox_min_x=int(minc),
+                bbox_max_y=int(maxr),
+                bbox_max_x=int(maxc),
+                radius_px=mean_radius,
+                ring_index=ring_index,
+                ring_radius_px=ring_radius,
+                ring_delta_px=ring_delta,
+                radius_group_index=-1,
+                radius_group_radius_px=float("nan"),
+                radius_group_delta_px=float("nan"),
+            )
+        )
+    return records
+
+
+def assign_radius_groups(records: list[SpotRecord], tolerance: float) -> list[dict[str, object]]:
+    ordered = sorted(records, key=lambda record: record.radius_px)
+    groups: list[list[SpotRecord]] = []
+    for record in ordered:
+        if not groups:
+            groups.append([record])
+            continue
+        current_radius = float(np.mean([item.radius_px for item in groups[-1]]))
+        if abs(record.radius_px - current_radius) <= tolerance:
+            groups[-1].append(record)
+        else:
+            groups.append([record])
+
+    summaries: list[dict[str, object]] = []
+    for index, group in enumerate(groups):
+        radius = float(np.mean([record.radius_px for record in group]))
+        for record in group:
+            record.radius_group_index = index
+            record.radius_group_radius_px = radius
+            record.radius_group_delta_px = float(record.radius_px - radius)
+        summaries.append(
+            {
+                "radius_group_index": index,
+                "radius_group_radius_px": radius,
+                "spot_count": len(group),
+            }
+        )
+    return summaries
+
+
+def ring_group_counts(records: list[SpotRecord], ring_radii: np.ndarray) -> list[dict[str, object]]:
+    counts: list[dict[str, object]] = []
+    for index, radius in enumerate(ring_radii):
+        group_records = [record for record in records if record.ring_index == index]
+        counts.append(
+            {
+                "ring_index": index,
+                "ring_radius_px": float(radius),
+                "spot_count": len(group_records),
+            }
+        )
+    off_ring = [record for record in records if record.ring_index < 0]
+    if off_ring:
+        counts.append(
+            {
+                "ring_index": -1,
+                "ring_radius_px": None,
+                "spot_count": len(off_ring),
+            }
+        )
+    return counts
 
 
 def write_spot_csv(path: Path, records: list[SpotRecord]) -> None:
@@ -831,6 +988,107 @@ def save_diagnostic_png(
     plt.close(fig)
 
 
+def save_grouped_ring_spot_overlay_png(
+    path: Path,
+    image: np.ndarray,
+    radial: np.ndarray,
+    base_mask: np.ndarray,
+    ring_radii: np.ndarray,
+    records: list[SpotRecord],
+) -> None:
+    prepare_matplotlib_cache(path)
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+
+    valid = ~base_mask
+    vmin, vmax = robust_limits(image, valid)
+    cmap = plt.get_cmap("gray").copy()
+    ring_colors = plt.get_cmap("turbo")(np.linspace(0.05, 0.95, max(len(ring_radii), 1)))
+    spot_colors = plt.get_cmap("tab20")(np.linspace(0, 1, 20))
+    markers = ["o", "D", "x", "+", "s", "^", "v", "P", "*", "X", "<", ">"]
+
+    fig, ax = plt.subplots(figsize=(12.5, 9), constrained_layout=True)
+    ax.imshow(
+        image,
+        origin="upper",
+        cmap=cmap,
+        norm=LogNorm(vmin=max(vmin, 1), vmax=vmax),
+        interpolation="nearest",
+    )
+
+    for index, radius in enumerate(ring_radii):
+        color = ring_colors[index % len(ring_colors)]
+        ax.contour(
+            radial,
+            levels=[float(radius)],
+            colors=[color],
+            linewidths=1.2,
+            alpha=0.95,
+        )
+        if index < 12:
+            ax.plot(
+                [],
+                [],
+                color=color,
+                lw=1.4,
+                label=f"ring {index + 1}: r={radius:.1f}px",
+            )
+
+    radius_groups: dict[int, list[SpotRecord]] = {}
+    for record in records:
+        radius_groups.setdefault(record.radius_group_index, []).append(record)
+
+    labelled_groups = 0
+    for index in sorted(radius_groups):
+        if index < 0:
+            continue
+        group = radius_groups[index]
+        if not group:
+            continue
+        radius = float(np.mean([record.radius_group_radius_px for record in group]))
+        marker = markers[index % len(markers)]
+        color = spot_colors[index % len(spot_colors)]
+        label = None
+        if len(group) > 1 and labelled_groups < 16:
+            label = f"spot radius group {index + 1}: r={radius:.1f}px, n={len(group)}"
+            labelled_groups += 1
+        scatter_kwargs = {
+            "s": 48,
+            "marker": marker,
+            "linewidths": 1.3,
+        }
+        if label is not None:
+            scatter_kwargs["label"] = label
+        if marker in {"x", "+", "*"}:
+            scatter_kwargs["color"] = color
+        else:
+            scatter_kwargs["facecolors"] = "none"
+            scatter_kwargs["edgecolors"] = color
+        ax.scatter(
+            [record.x for record in group],
+            [record.y for record in group],
+            **scatter_kwargs,
+        )
+
+    ax.set_title("Colored rings and all-spot same-radius groups")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0.0,
+        fontsize=7,
+        framealpha=0.9,
+        ncol=1,
+    )
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
 def process_image(
     image_path: Path,
     out_dir: Path,
@@ -896,7 +1154,7 @@ def process_image(
     )
     ring_mask = build_ring_mask(radial, ring_radii, config.ring_half_width, base_mask)
 
-    spot_mask, z, records = detect_spots(
+    spot_mask, z, _primary_records = detect_spots(
         image=image,
         radial=radial,
         base_mask=base_mask,
@@ -918,6 +1176,21 @@ def process_image(
         dilate_radius=config.micro_spot_dilate,
     )
     spot_core_mask = spot_mask | micro_spot_mask
+    records = records_from_spot_mask(
+        spot_core_mask,
+        image,
+        z,
+        radial,
+        ring_radii,
+        ring_tolerance=config.spot_ring_tolerance,
+        min_area=config.min_area,
+        max_area=config.max_area,
+        max_eccentricity=config.max_eccentricity,
+    )
+    radius_spot_groups = assign_radius_groups(
+        records,
+        tolerance=config.spot_radius_group_tolerance,
+    )
     spot_display_mask = dilate_mask(spot_core_mask, config.spot_dilate)
     protected_ring_mask = ring_mask & ~spot_display_mask
 
@@ -932,6 +1205,7 @@ def process_image(
     report_path = out_dir / f"{stem}_auto_ring_filter_report.json"
     png_path = out_dir / f"{stem}_auto_ring_filter_overlay.png"
     filtered_png_path = out_dir / f"{stem}_ring_filtered_image.png"
+    grouped_png_path = out_dir / f"{stem}_ring_spot_groups.png"
 
     np.save(raw_ring_mask_path, ring_mask)
     np.save(ring_mask_path, protected_ring_mask)
@@ -959,6 +1233,10 @@ def process_image(
         "density_ring_radii_px": [float(x) for x in density_ring_radii],
         "ring_radii_px": [float(x) for x in ring_radii],
         "ring_half_width_px": float(config.ring_half_width),
+        "spot_ring_tolerance_px": float(config.spot_ring_tolerance),
+        "spot_radius_group_tolerance_px": float(config.spot_radius_group_tolerance),
+        "ring_spot_groups": ring_group_counts(records, ring_radii),
+        "radius_spot_groups": radius_spot_groups,
         "base_mask_pixels": int(base_mask.sum()),
         "raw_ring_mask_pixels": int(ring_mask.sum()),
         "ring_mask_pixels": int(protected_ring_mask.sum()),
@@ -979,6 +1257,7 @@ def process_image(
             "spots_csv": str(csv_path),
             "diagnostic_png": str(png_path) if config.make_plot else None,
             "filtered_image_png": str(filtered_png_path) if config.make_plot else None,
+            "grouped_overlay_png": str(grouped_png_path) if config.make_plot else None,
         },
     }
     report_path.write_text(json.dumps(report, indent=2))
@@ -1002,6 +1281,14 @@ def process_image(
             image,
             combined_mask,
             spot_mask=spot_display_mask,
+        )
+        save_grouped_ring_spot_overlay_png(
+            grouped_png_path,
+            image,
+            radial,
+            base_mask,
+            ring_radii,
+            records,
         )
 
     return report

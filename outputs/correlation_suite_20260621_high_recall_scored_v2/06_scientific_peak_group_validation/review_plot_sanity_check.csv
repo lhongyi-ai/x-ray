@@ -1,0 +1,3 @@
+frame,total_candidates,tier_a_count,tier_b_count,tier_c_count,visually_retained_weak_features,obvious_artifacts_remaining_in_A+B,conclusion
+10.4GPa,338,149,99,90,weak shoulder/small features around 8-9 deg and 12-16 deg remain marked in Tier A/B,"some high-angle and broad-tail markers remain in A+B, consistent with high-recall setting",passes high-recall sanity check; no top-peaks truncation
+2.4GPa_decomp,527,171,73,283,plausible protrusions remain in A/B across the broad decomp background,"many obvious slope/plateau/tail candidates were downgraded to Tier C, but A/B is still intentionally permissive","usable for cross-scan prioritization, not single-scan phase assignment"
